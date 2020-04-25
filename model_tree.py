@@ -21,19 +21,21 @@ class ModelTree:
             tree = self.root
         if len(tree.children) == 0:  # Leaf
             data = fix_columns(pd.get_dummies(sample), pd.get_dummies(tree.samples).columns)
+            for a_col, b_col in zip(data.columns, pd.get_dummies(tree.samples).columns):
+                assert (a_col == b_col)
             return tree.model.predict(data)
         if tree.threshold is None:  # Categorical
             found = False
             for index, child in enumerate(tree.children):
                 if sample[tree.split_by_feature].values[0] == child.nominal_value:
-                    print("Found")
                     node = child
                     found = True
                     break
-            if not found:
-                print("Not found")
-                return tree.model.predict(
-                    fix_columns(pd.get_dummies(sample), pd.get_dummies(tree.samples).columns))
+            if not found: # nominal value wasn't seen during training
+                data = fix_columns(pd.get_dummies(sample), pd.get_dummies(tree.samples).columns)
+                for a_col, b_col in zip(data.columns, pd.get_dummies(tree.samples).columns):
+                    assert (a_col == b_col)
+                return tree.model.predict(data)
         else:  # Numeric
             if sample[tree.split_by_feature].values[0] >= tree.threshold:
                 node = tree.children[0]  # right node
@@ -73,6 +75,8 @@ class ModelTree:
             split = self.nominal_split(feature, node.samples, node.labels, node.depth + 1)
             if split is None or len(split.children) < 2:
                 return None
+            if node.nominal_value is not None:
+                split.nominal_value = node.nominal_value
         else:
             attr_splits = list(set(node.samples[feature].values))
             splits = []
@@ -87,6 +91,11 @@ class ModelTree:
             if node.nominal_value is not None:
                 split.nominal_value = node.nominal_value
                 # Important to keep the nominal_value in case we splitted a categorical node
+
+        if node.loss <= split.loss:  # Stop splitting in case it doesn't improve MSE
+            print("NOT A GOOD SPLIT")
+            return None
+
         return split
 
     def node_from_nominal_group(self, df, depth, nominal_value):
@@ -110,8 +119,7 @@ class ModelTree:
             wmse += node.loss
 
         split = Node(self.learner, train, label, depth, split_by_feature=feature, children=nodes)
-        loss = wmse / len(train)
-        split.loss = loss
+        split.loss = wmse / len(train)
         return split
 
     def numeric_split(self, feature, train, label, threshold, depth):
@@ -127,6 +135,5 @@ class ModelTree:
         split = Node(self.learner, train, label, depth, children=[right_node, left_node], split_by_feature=feature,
                      threshold=threshold)
 
-        wloss = (right_node.loss + left_node.loss) / len(train)
-        split.loss = wloss
+        split.loss = (right_node.loss + left_node.loss) / len(train)
         return split

@@ -29,6 +29,8 @@ def fix_columns(d, columns):
     assert (set(columns) - set(d.columns) == set())
 
     d = d[columns]
+    for a_col, b_col in zip(d.columns, columns):
+        assert(a_col == b_col)
     return d
 
 
@@ -36,4 +38,3 @@ def DatasetFactory(dataset_name):
     if dataset_name == 'machine': return machine_dataset()
     if dataset_name == 'forestfires': return forestfires_dataset()
     print("Can't find that dataset. DUDE.")
-    return None
